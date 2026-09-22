@@ -1,0 +1,40 @@
+{
+  "name": "@bobjoy/taf-mysql-mcp",
+  "version": "1.0.0",
+  "description": "MCP server：经 TAF TgDataAsync 数据访问服务查询 MySQL，默认只读",
+  "bin": {
+    "taf-mysql-mcp": "index.js"
+  },
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "config.js",
+    "sql-policy.js",
+    "TgDataAsyncProxy.js",
+    "sql-policy.test.js",
+    "config.test.js"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org/",
+    "access": "public"
+  },
+  "keywords": [
+    "mcp",
+    "modelcontextprotocol",
+    "mysql",
+    "taf"
+  ],
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@taf/taf-rpc": "^3.6.20",
+    "@taf/taf-stream": "^4.1.5",
+    "zod": "^4.6.5"
+  }
+}
