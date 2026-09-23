@@ -106,7 +106,7 @@ function classifySql(sql, allowWrite = false) {
   if (READ_VERBS.has(verb)) return { decision: 'readonly', verb };
   if (WRITE_VERBS.has(verb)) {
     if (!allowWrite) {
-      return reject(`${verb} 属于写操作，当前为只读模式。确认可写后设置环境变量 TAF_MYSQL_ALLOW_WRITE=1`);
+      return reject(`${verb} 属于写操作，当前为只读模式。确认可写后把配置文件里的 allowWrite 改成 true`);
     }
     return { decision: 'write', verb };
   }

@@ -20,9 +20,7 @@ npm config get @taf:registry
 
 ## 配置
 
-两种来源，**同一项以 `.taf-mysql-mcp.json` 为准，环境变量兜底**。
-
-`.taf-mysql-mcp.json`（放在进程 cwd 下）：
+只有一个来源：`<cwd>/.taf-mysql-mcp/config.json`。不读环境变量，不读别的路径，文件不在就直接退出。
 
 ```json
 {
@@ -33,14 +31,14 @@ npm config get @taf:registry
 }
 ```
 
-| 字段 | 环境变量 | 默认 | 说明 |
-| --- | --- | --- | --- |
-| `servant` | `TAF_MYSQL_SERVANT` | 无 | 必填，完整 servant 值 |
-| `allowWrite` | `TAF_MYSQL_ALLOW_WRITE=1` | `false` | 放开 INSERT / UPDATE / DELETE / REPLACE |
-| `maxRows` | `TAF_MYSQL_MAX_ROWS` | `200` | 单次返回行数上限，超出截断并提示 |
-| `timeoutMs` | `TAF_MYSQL_TIMEOUT_MS` | `30000` | 单次查询等待上限 |
+| 字段 | 默认 | 说明 |
+| --- | --- | --- |
+| `servant` | 无 | 必填，完整 servant 值 |
+| `allowWrite` | `false` | 放开 INSERT / UPDATE / DELETE / REPLACE |
+| `maxRows` | `200` | 单次返回行数上限，超出截断并提示 |
+| `timeoutMs` | `30000` | 单次查询等待上限 |
 
-`servant` 必须是 `<应用名>.TgDataAsyncServer.TgDataAsyncObj@tcp -h <host> -p <port> -t 60000` 这种完整值，只给 endpoint 不够。**本工具不猜应用名、不内置任何地址、也不提供默认环境**——避免本意连测试库实际连上了生产。配置缺失或格式不对时进程直接退出并说明是哪个来源给错了。
+`servant` 必须是 `<应用名>.TgDataAsyncServer.TgDataAsyncObj@tcp -h <host> -p <port> -t 60000` 这种完整值，只给 endpoint 不够。**本工具不猜应用名、不内置任何地址、也不提供默认环境**——避免本意连测试库实际连上了生产。文件缺失、JSON 坏掉、字段类型不对，都会报错退出并带上文件路径；未知的键只告警不生效。
 
 ## 注册到 MCP 客户端
 
@@ -49,13 +47,13 @@ npm config get @taf:registry
   "mcpServers": {
     "taf-mysql": {
       "command": "taf-mysql-mcp",
-      "env": { "TAF_MYSQL_SERVANT": "<应用名>.TgDataAsyncServer.TgDataAsyncObj@tcp -h <host> -t 60000 -p <port>" }
+      "args": []
     }
   }
 }
 ```
 
-用配置文件而不是环境变量的话，注意 **cwd 是 MCP 客户端决定的**，不是你敲命令的目录；不确定就看启动时 stderr 上那行 `[config] ...`，它会把实际生效的配置全部打出来。
+配置不进这段 JSON，只进文件。注意 **cwd 是 MCP 客户端决定的**，不是你敲命令的目录；不确定就看启动时 stderr 上那行 `[config] 已读取 <绝对路径> ...`，它会把实际生效的文件和参数打出来。
 
 ## 工具面
 
@@ -64,7 +62,7 @@ npm config get @taf:registry
 ## 安全边界
 
 - 默认只读。
-- `allowWrite=1` 才放开 DML（INSERT / UPDATE / DELETE / REPLACE）。
+- `allowWrite: true` 才放开 DML（INSERT / UPDATE / DELETE / REPLACE）。
 - **DDL 永远拒绝**：`TRUNCATE` / `DROP` / `ALTER` / `CREATE` / `RENAME` / `GRANT` 等，开了写开关也救不了。
 - 判定不是看首关键字：先把字符串字面量、反引号标识符、注释替换成等长占位，再按括号深度取真正的语句动词。所以 `SELECT 'x; DROP TABLE t'`、`SELECT 1; DROP TABLE t`、`/*comment*/ DELETE ...`、`WITH d AS (...) DELETE ...` 都不会骗过去。
 - `SELECT ... INTO OUTFILE / DUMPFILE` 拒绝（能把数据写到服务端磁盘）。
@@ -91,4 +89,4 @@ npm config get @taf:registry
 npm test          # node --test，无额外依赖
 ```
 
-`sql-policy.test.js` 是绕过用例集（注释、字面量、多语句、CTE 修饰的 DML、可执行注释、权限/事务/存储过程语句）；`config.test.js` 覆盖配置文件与环境变量的优先级和各类报错。改策略逻辑请先在这里加用例。
+`sql-policy.test.js` 是绕过用例集（注释、字面量、多语句、CTE 修饰的 DML、可执行注释、权限/事务/存储过程语句）；`config.test.js` 覆盖配置文件的读取路径、缺文件、坏 JSON、未知键告警与字段校验。改策略逻辑请先在这里加用例。

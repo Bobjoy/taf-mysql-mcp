@@ -70,7 +70,7 @@ test('DML 需要写开关', () => {
     'INSERT INTO t VALUES (1)', 'REPLACE INTO t VALUES (1)',
   ]) {
     assert.strictEqual(classifySql(sql).decision, REJECT, `未开开关应拒绝: ${sql}`);
-    assert.match(classifySql(sql).reason, /ALLOW_WRITE/);
+    assert.match(classifySql(sql).reason, /allowWrite/);
     wr(sql);
   }
 });

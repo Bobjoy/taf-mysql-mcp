@@ -1,6 +1,6 @@
 {
   "name": "@bobjoy/taf-mysql-mcp",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "MCP server：经 TAF TgDataAsync 数据访问服务查询 MySQL，默认只读",
   "bin": {
     "taf-mysql-mcp": "index.js"

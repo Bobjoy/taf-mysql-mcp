@@ -10,7 +10,7 @@ const { McpServer } = require( '@modelcontextprotocol/sdk/server/mcp.js' );
 const { StdioServerTransport } = require( '@modelcontextprotocol/sdk/server/stdio.js' );
 const { z } = require( 'zod' );
 const { classifySql } = require( './sql-policy' );
-const { loadConfig, FILE_NAME } = require( './config' );
+const { loadConfig, CONFIG_PATH } = require( './config' );
 const { ETG: DB } = require( './TgDataAsyncProxy' );
 
 let Taf;
@@ -23,20 +23,19 @@ try {
 
 const USAGE = `taf-mysql-mcp 配置错误。
 
-配置来源两套，同一项以 ${FILE_NAME} 为准、环境变量兜底：
-  ${FILE_NAME}（放在进程 cwd 下，注意 MCP 客户端决定的 cwd）
-    {
-      "servant":   "<应用名>.TgDataAsyncServer.TgDataAsyncObj@tcp -h <host> -t 60000 -p <port>",
-      "allowWrite": false,
-      "maxRows":    200,
-      "timeoutMs":  30000
-    }
-  环境变量：TAF_MYSQL_SERVANT / TAF_MYSQL_ALLOW_WRITE=1 / TAF_MYSQL_MAX_ROWS / TAF_MYSQL_TIMEOUT_MS
+唯一配置入口：${CONFIG_PATH}（相对进程 cwd，注意 MCP 客户端决定的 cwd）
+  {
+    "servant":    "<应用名>.TgDataAsyncServer.TgDataAsyncObj@tcp -h <host> -t 60000 -p <port>",
+    "allowWrite": false,
+    "maxRows":    200,
+    "timeoutMs":  30000
+  }
 
 servant 必须是完整值。本工具不猜应用名、不内置任何地址，也不提供默认环境，
+不接受环境变量，也不读其他路径的配置文件——配置文件不在就报错，
 避免本意连测试库实际连上生产。
 
-allowWrite=1 才放开 INSERT/UPDATE/DELETE/REPLACE；TRUNCATE/DROP/ALTER 等 DDL 永远拒绝。
+allowWrite=true 才放开 INSERT/UPDATE/DELETE/REPLACE；TRUNCATE/DROP/ALTER 等 DDL 永远拒绝。
 timeoutMs 是单次查询等待上限——TAF 客户端自身的超时很长，servant 配错时会一直挂着，靠这个值兜住。`;
 
 function createPool( servant, timeoutMs ) {
@@ -68,9 +67,9 @@ try {
   process.exit( 1 );
 }
 
-const { config, warnings, usedFile } = loaded;
+const { config, warnings, filePath } = loaded;
 for ( const warning of warnings ) console.error( `[config] ${warning}` );
-console.error( `[config] ${usedFile ? `已读取 ${FILE_NAME}` : '未找到配置文件，使用环境变量'} | servant=${config.servant} | ${config.allowWrite ? '可读可写' : '只读'} | maxRows=${config.maxRows} | timeoutMs=${config.timeoutMs}` );
+console.error( `[config] 已读取 ${filePath} | ${config.allowWrite ? '可读可写' : '只读'} | maxRows=${config.maxRows} | timeoutMs=${config.timeoutMs}` );
 
 const pool = createPool( config.servant, config.timeoutMs );
 
@@ -126,7 +125,7 @@ async function runQuery( sql ) {
   return text( `${shown.length} 行${notice}\n${JSON.stringify( shown )}` );
 }
 
-const server = new McpServer( { name: 'taf-mysql-mcp', version: '1.0.0' } );
+const server = new McpServer( { name: 'taf-mysql-mcp', version: require( './package.json' ).version } );
 
 server.registerTool(
   'query',

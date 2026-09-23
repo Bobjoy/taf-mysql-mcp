@@ -3,13 +3,15 @@
 const fs = require( 'fs' );
 const path = require( 'path' );
 
-const FILE_NAME = '.taf-mysql-mcp.json';
+// 唯一的配置入口：<cwd>/.taf-mysql-mcp/config.json。没有环境变量兜底，
+// 也没有内置默认地址——配置文件不在就报错，避免本意连测试库实际连上生产。
+const CONFIG_PATH = path.join( '.taf-mysql-mcp', 'config.json' );
 
 const KEYS = {
-  servant: { env: 'TAF_MYSQL_SERVANT', def: '' },
-  allowWrite: { env: 'TAF_MYSQL_ALLOW_WRITE', def: false },
-  maxRows: { env: 'TAF_MYSQL_MAX_ROWS', def: 200 },
-  timeoutMs: { env: 'TAF_MYSQL_TIMEOUT_MS', def: 30000 },
+  servant: true,
+  allowWrite: true,
+  maxRows: true,
+  timeoutMs: true,
 };
 
 class ConfigError extends Error {}
@@ -17,66 +19,57 @@ const fail = msg => { throw new ConfigError( msg ); };
 
 const truthy = v => v === true || v === 1 || v === '1' || v === 'true';
 
-function positiveInt( key, value, from ) {
+function positiveInt( key, value, filePath ) {
   if ( Number.isInteger( value ) && value > 0 ) return value;
   if ( typeof value === 'string' && /^\s*\d+\s*$/.test( value ) && Number( value ) > 0 ) return Number( value );
-  fail( `${key} 必须是正整数，${from} 给的是 ${JSON.stringify( value )}` );
+  fail( `${filePath} 里的 ${key} 必须是正整数，给的是 ${JSON.stringify( value )}` );
 }
 
 function loadConfig( cwd = process.cwd() ) {
-  const filePath = path.join( cwd, FILE_NAME );
-  const usedFile = fs.existsSync( filePath );
-  const fileVals = {};
+  const filePath = path.join( cwd, CONFIG_PATH );
+  if ( !fs.existsSync( filePath ) ) {
+    fail( `未找到配置文件 ${filePath}。servant 只能从该文件读取，本工具不接受环境变量、也不内置任何环境地址。` );
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse( fs.readFileSync( filePath, 'utf8' ) );
+  } catch ( err ) {
+    fail( `配置文件解析失败：${filePath} —— ${err.message}` );
+  }
+  if ( !parsed || typeof parsed !== 'object' || Array.isArray( parsed ) ) {
+    fail( `配置文件顶层必须是对象：${filePath}` );
+  }
+
   const warnings = [];
-
-  if ( usedFile ) {
-    let parsed;
-    try {
-      parsed = JSON.parse( fs.readFileSync( filePath, 'utf8' ) );
-    } catch ( err ) {
-      fail( `.taf-mysql-mcp.json 解析失败：${filePath} —— ${err.message}` );
-    }
-    if ( !parsed || typeof parsed !== 'object' || Array.isArray( parsed ) ) {
-      fail( `.taf-mysql-mcp.json 顶层必须是对象，实际是 ${Array.isArray( parsed ) ? 'array' : typeof parsed}` );
-    }
-    for ( const key of Object.keys( parsed ) ) {
-      if ( key in KEYS ) continue;
-      const near = Object.keys( KEYS ).find( v => v.toLowerCase() === key.toLowerCase() );
-      warnings.push( near
-        ? `${filePath} 里的 "${key}" 不是已知配置项，已忽略——是否想写 "${near}"？`
-        : `${filePath} 里的 "${key}" 不是已知配置项，已忽略` );
-    }
-    Object.assign( fileVals, parsed );
+  for ( const key of Object.keys( parsed ) ) {
+    if ( key in KEYS ) continue;
+    const near = Object.keys( KEYS ).find( v => v.toLowerCase() === key.toLowerCase() );
+    warnings.push( near
+      ? `${filePath} 里的 "${key}" 不是已知配置项，已忽略——是否想写 "${near}"？`
+      : `${filePath} 里的 "${key}" 不是已知配置项，已忽略` );
   }
 
-  const pick = key => {
-    if ( key in fileVals ) return { value: fileVals[ key ], from: filePath };
-    const raw = ( process.env[ KEYS[ key ].env ] || '' ).trim();
-    return raw ? { value: raw, from: KEYS[ key ].env } : { value: KEYS[ key ].def, from: '默认值' };
-  };
-
-  const servant = pick( 'servant' );
-  if ( !servant.value ) {
-    fail( `未提供 servant：请在 ${KEYS.servant.env} 环境变量或 ${FILE_NAME} 的 "servant" 字段里给出完整 servant 值。` );
+  if ( !parsed.servant ) {
+    fail( `${filePath} 缺少 "servant"：请填写完整 servant 值。` );
   }
-  if ( typeof servant.value !== 'string' || !servant.value.includes( '@' ) ) {
-    fail( `${servant.from} 的 servant 缺少 \`<应用名>.TgDataAsyncServer.TgDataAsyncObj@\` 前缀，只给 endpoint 是不够的。` );
+  if ( typeof parsed.servant !== 'string' || !parsed.servant.includes( '@' ) ) {
+    fail( `${filePath} 的 servant 缺少 \`<应用名>.TgDataAsyncServer.TgDataAsyncObj@\` 前缀，只给 endpoint 是不够的。` );
   }
 
-  const allowWrite = pick( 'allowWrite' );
-  const rows = pick( 'maxRows' );
-  const timeout = pick( 'timeoutMs' );
+  // 键存在就按它校验，写 null 也算错——不做静默兜底
+  const raw = ( key, def ) => ( key in parsed ? parsed[ key ] : def );
 
   return {
     config: {
-      servant: servant.value.trim(),
-      allowWrite: truthy( allowWrite.value ),
-      maxRows: positiveInt( 'maxRows', rows.value, rows.from ),
-      timeoutMs: positiveInt( 'timeoutMs', timeout.value, timeout.from ),
+      servant: parsed.servant.trim(),
+      allowWrite: truthy( parsed.allowWrite ),
+      maxRows: positiveInt( 'maxRows', raw( 'maxRows', 200 ), filePath ),
+      timeoutMs: positiveInt( 'timeoutMs', raw( 'timeoutMs', 30000 ), filePath ),
     },
     warnings,
-    usedFile,
+    filePath,
   };
 }
 
-module.exports = { loadConfig, FILE_NAME };
+module.exports = { loadConfig, CONFIG_PATH };
