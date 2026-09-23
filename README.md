@@ -20,7 +20,14 @@ npm config get @taf:registry
 
 ## 配置
 
-只有一个来源：`<cwd>/.taf-mysql-mcp/config.json`。不读环境变量，不读别的路径，文件不在就直接退出。
+默认读 `<cwd>/.taf-mysql-mcp/config.json`，也可以指定别的文件：
+
+```bash
+taf-mysql-mcp --config /path/to/config.json
+taf-mysql-mcp /path/to/config.json     # 裸路径同样接受，~ 会展开
+```
+
+除了这一个文件（或 `--config` 给的那一个）没有第二个来源：不读环境变量，不内置地址，参数打错（`--confg`）直接报错退出而不是静默回落到默认路径。文件不在、JSON 坏掉、字段类型不对都会退出并带上路径；未知的键只告警不生效。
 
 ```json
 {
@@ -38,7 +45,7 @@ npm config get @taf:registry
 | `maxRows` | `200` | 单次返回行数上限，超出截断并提示 |
 | `timeoutMs` | `30000` | 单次查询等待上限 |
 
-`servant` 必须是 `<应用名>.TgDataAsyncServer.TgDataAsyncObj@tcp -h <host> -p <port> -t 60000` 这种完整值，只给 endpoint 不够。**本工具不猜应用名、不内置任何地址、也不提供默认环境**——避免本意连测试库实际连上了生产。文件缺失、JSON 坏掉、字段类型不对，都会报错退出并带上文件路径；未知的键只告警不生效。
+`servant` 必须是 `<应用名>.TgDataAsyncServer.TgDataAsyncObj@tcp -h <host> -p <port> -t 60000` 这种完整值，只给 endpoint 不够。**本工具不猜应用名、不内置任何地址、也不提供默认环境**——避免本意连测试库实际连上了生产。
 
 ## 注册到 MCP 客户端
 
@@ -53,7 +60,13 @@ npm config get @taf:registry
 }
 ```
 
-配置不进这段 JSON，只进文件。注意 **cwd 是 MCP 客户端决定的**，不是你敲命令的目录；不确定就看启动时 stderr 上那行 `[config] 已读取 <绝对路径> ...`，它会把实际生效的文件和参数打出来。
+配置不进这段 JSON，只进文件。用默认路径时注意 **cwd 是 MCP 客户端决定的**，不是你敲命令的目录；想固定住就把路径写进 `args`：
+
+```json
+{ "args": ["--config", "/path/to/config.json"] }
+```
+
+不确定实际读了哪个文件，看启动时 stderr 上那行 `[config] 已读取 <绝对路径> ...`。
 
 ## 工具面
 

@@ -1,10 +1,12 @@
 'use strict';
 
 const fs = require( 'fs' );
+const os = require( 'os' );
 const path = require( 'path' );
 
-// 唯一的配置入口：<cwd>/.taf-mysql-mcp/config.json。没有环境变量兜底，
-// 也没有内置默认地址——配置文件不在就报错，避免本意连测试库实际连上生产。
+// 默认配置入口：<cwd>/.taf-mysql-mcp/config.json，可用 --config 指定别的文件。
+// 除此之外没有第二个来源——不读环境变量、不内置任何环境地址，
+// 配置文件不在就报错，避免本意连测试库实际连上生产。
 const CONFIG_PATH = path.join( '.taf-mysql-mcp', 'config.json' );
 
 const KEYS = {
@@ -25,10 +27,38 @@ function positiveInt( key, value, filePath ) {
   fail( `${filePath} 里的 ${key} 必须是正整数，给的是 ${JSON.stringify( value )}` );
 }
 
-function loadConfig( cwd = process.cwd() ) {
-  const filePath = path.join( cwd, CONFIG_PATH );
+/** 从 argv 里取配置文件路径，支持 `--config <p>` / `--config=<p>` / 裸路径。没有则返回 ''（走默认） */
+function parseConfigArg( argv ) {
+  const given = [];
+  for ( let i = 0; i < argv.length; i++ ) {
+    const arg = argv[ i ];
+    if ( arg === '--config' ) {
+      const next = argv[ ++i ];
+      if ( !next ) fail( '--config 后面要跟配置文件路径' );
+      given.push( next );
+    } else if ( arg.startsWith( '--config=' ) ) {
+      given.push( arg.slice( '--config='.length ) );
+    } else if ( arg.startsWith( '-' ) ) {
+      // 打错参数名如果静默走默认路径，可能连上本不该连的环境
+      fail( `不认识的参数 ${arg}，只接受 --config <文件路径>` );
+    } else given.push( arg );
+  }
+  if ( given.length > 1 ) fail( `只能指定一个配置文件，给了 ${given.length} 个：${given.join( ' ' )}` );
+  return given[ 0 ] || '';
+}
+
+function resolveConfigPath( cwd, explicit ) {
+  if ( !explicit ) return path.join( cwd, CONFIG_PATH );
+  const expanded = explicit.startsWith( '~/' ) ? path.join( os.homedir(), explicit.slice( 2 ) ) : explicit;
+  return path.resolve( cwd, expanded );
+}
+
+function loadConfig( cwd = process.cwd(), explicit = '' ) {
+  const filePath = resolveConfigPath( cwd, explicit );
   if ( !fs.existsSync( filePath ) ) {
-    fail( `未找到配置文件 ${filePath}。servant 只能从该文件读取，本工具不接受环境变量、也不内置任何环境地址。` );
+    const fallback = path.join( cwd, CONFIG_PATH );
+    fail( `未找到配置文件 ${filePath}${explicit && filePath !== fallback ? `（默认位置是 ${fallback}）` : ''}。`
+      + `本工具不接受环境变量、也不内置任何环境地址，请显式给出文件。` );
   }
 
   let parsed;
@@ -72,4 +102,4 @@ function loadConfig( cwd = process.cwd() ) {
   };
 }
 
-module.exports = { loadConfig, CONFIG_PATH };
+module.exports = { loadConfig, parseConfigArg, CONFIG_PATH };

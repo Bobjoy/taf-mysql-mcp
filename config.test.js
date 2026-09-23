@@ -3,7 +3,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { loadConfig, CONFIG_PATH } = require('./config');
+const { loadConfig, parseConfigArg, CONFIG_PATH } = require('./config');
 
 const SERVANT = 'APP.TgDataAsyncServer.TgDataAsyncObj@tcp -h 127.0.0.1 -t 60000 -p 1234';
 
@@ -101,4 +101,41 @@ test('数值项必须是正整数，否则报错而不是静默取默认', () =>
   assert.strictEqual(loadConfig(inDir({ servant: SERVANT, timeoutMs: 1500 })).config.timeoutMs, 1500);
   assert.strictEqual(loadConfig(inDir({ servant: SERVANT, maxRows: '77' })).config.maxRows, 77, '数字字符串应接受');
   assert.match(msg(() => loadConfig(inDir({ servant: SERVANT, timeoutMs: 'bad' }))), /timeoutMs 必须是正整数/);
+});
+
+test('parseConfigArg 认三种写法，其余参数一律报错', () => {
+  assert.strictEqual(parseConfigArg([]), '');
+  assert.strictEqual(parseConfigArg(['--config', '/a/b.json']), '/a/b.json');
+  assert.strictEqual(parseConfigArg(['--config=/a/b.json']), '/a/b.json');
+  assert.strictEqual(parseConfigArg(['/a/b.json']), '/a/b.json');
+  assert.match(msg(() => parseConfigArg(['--confg', '/a'])), /不认识的参数/);
+  assert.match(msg(() => parseConfigArg(['--config'])), /后面要跟配置文件路径/);
+  assert.match(msg(() => parseConfigArg(['--config', '/a', '/b'])), /只能指定一个配置文件/);
+});
+
+test('--config 的绝对路径生效，相对路径按 cwd 解析', () => {
+  const dir = inDir({ servant: SERVANT });
+  const other = path.join(dir, 'elsewhere.json');
+  fs.copyFileSync(path.join(dir, CONFIG_PATH), other);
+  assert.strictEqual(loadConfig(dir, other).filePath, other);
+  assert.strictEqual(loadConfig(dir, 'elsewhere.json').filePath, other);
+  assert.strictEqual(loadConfig(dir, '').filePath, path.join(dir, CONFIG_PATH));
+});
+
+test('~ 展开到家目录', () => {
+  const file = path.join(os.homedir(), '.taf-mysql-mcp-spec-test.json');
+  fs.writeFileSync(file, JSON.stringify({ servant: SERVANT }));
+  try {
+    assert.strictEqual(loadConfig('/etc', '~/.taf-mysql-mcp-spec-test.json').filePath, file);
+  } finally {
+    fs.rmSync(file, { force: true });
+  }
+});
+
+test('显式路径不存在时报错，同时点出默认位置', () => {
+  const dir = inDir(null);
+  const message = msg(() => loadConfig(dir, path.join(dir, 'nope.json')));
+  assert.match(message, /未找到配置文件/);
+  assert.match(message, /nope\.json/);
+  assert.match(message, /默认位置/);
 });

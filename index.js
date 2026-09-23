@@ -10,7 +10,7 @@ const { McpServer } = require( '@modelcontextprotocol/sdk/server/mcp.js' );
 const { StdioServerTransport } = require( '@modelcontextprotocol/sdk/server/stdio.js' );
 const { z } = require( 'zod' );
 const { classifySql } = require( './sql-policy' );
-const { loadConfig, CONFIG_PATH } = require( './config' );
+const { loadConfig, parseConfigArg, CONFIG_PATH } = require( './config' );
 const { ETG: DB } = require( './TgDataAsyncProxy' );
 
 let Taf;
@@ -23,7 +23,11 @@ try {
 
 const USAGE = `taf-mysql-mcp 配置错误。
 
-唯一配置入口：${CONFIG_PATH}（相对进程 cwd，注意 MCP 客户端决定的 cwd）
+配置只有一个入口：默认读 <cwd>/${CONFIG_PATH}，也可以指定别的文件：
+  taf-mysql-mcp --config /path/to/config.json
+  taf-mysql-mcp /path/to/config.json
+
+内容形如：
   {
     "servant":    "<应用名>.TgDataAsyncServer.TgDataAsyncObj@tcp -h <host> -t 60000 -p <port>",
     "allowWrite": false,
@@ -32,7 +36,7 @@ const USAGE = `taf-mysql-mcp 配置错误。
   }
 
 servant 必须是完整值。本工具不猜应用名、不内置任何地址，也不提供默认环境，
-不接受环境变量，也不读其他路径的配置文件——配置文件不在就报错，
+不接受环境变量，也只认这一个文件（或 --config 指定的那一个）——配置文件不在就报错，
 避免本意连测试库实际连上生产。
 
 allowWrite=true 才放开 INSERT/UPDATE/DELETE/REPLACE；TRUNCATE/DROP/ALTER 等 DDL 永远拒绝。
@@ -61,7 +65,7 @@ function createPool( servant, timeoutMs ) {
 
 let loaded;
 try {
-  loaded = loadConfig();
+  loaded = loadConfig( process.cwd(), parseConfigArg( process.argv.slice( 2 ) ) );
 } catch ( err ) {
   console.error( `${err.message}\n\n${USAGE}` );
   process.exit( 1 );
