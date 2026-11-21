@@ -39,7 +39,7 @@ servant 必须是完整值。本工具不猜应用名、不内置任何地址，
 不接受环境变量，也只认这一个文件（或 --config 指定的那一个）——配置文件不在就报错，
 避免本意连测试库实际连上生产。
 
-allowWrite=true 才放开 INSERT/UPDATE/DELETE/REPLACE；TRUNCATE/DROP/ALTER 等 DDL 永远拒绝。
+allowWrite=true 放开 INSERT/UPDATE/DELETE/REPLACE，以及 ALTER/CREATE/DROP/TRUNCATE 等 DDL。
 timeoutMs 是单次查询等待上限——TAF 客户端自身的超时很长，servant 配错时会一直挂着，靠这个值兜住。`;
 
 function createPool( servant, timeoutMs ) {
@@ -116,7 +116,7 @@ async function runQuery( sql ) {
   }
   // 网关执行不了这条 SQL 时返回字面量 false（语法错误、SHOW/DESC/EXPLAIN 等都是这个形状）
   if ( rows === false ) {
-    return text( '数据访问服务没有返回结果集：这条 SQL 网关执行不了。该服务只支持 SELECT 族语句，SHOW TABLES / DESC / EXPLAIN 均无效；查表清单用 select table_name from information_schema.tables where table_schema = database()，查字段用 information_schema.columns。', true );
+    return text( '数据访问服务没有返回结果集：这条 SQL 网关执行不了（SHOW TABLES / DESC / EXPLAIN 以及部分 DDL 都是这个返回）。查表清单用 select table_name from information_schema.tables where table_schema = database()，查字段用 information_schema.columns。', true );
   }
 
   if ( !Array.isArray( rows ) ) return text( JSON.stringify( rows ) );
@@ -139,9 +139,8 @@ server.registerTool(
       '经 TAF 数据访问服务查询 MySQL。',
       '一次只传一条 SQL，结尾分号可省。',
       config.allowWrite
-        ? '允许 SELECT 以及 INSERT/UPDATE/DELETE/REPLACE。'
-        : '当前只读：仅允许 SELECT。',
-      'TRUNCATE、DROP、ALTER、CREATE 等 DDL 一律拒绝。',
+        ? '允许 SELECT 以及 INSERT/UPDATE/DELETE/REPLACE，外加 ALTER/CREATE/DROP/TRUNCATE 等 DDL。'
+        : '当前只读：仅允许 SELECT，DDL 一律拒绝。',
       '该服务只支持 SELECT 族语句：SHOW TABLES / DESC / EXPLAIN 不生效，查表清单用 select table_name from information_schema.tables where table_schema = database()，查字段用 information_schema.columns。',
       '跨库查询用全限定表名，如 <库名>.<表名>。',
       `未加 LIMIT 的大表查询最多返回 ${config.maxRows} 行，会被截断。`,

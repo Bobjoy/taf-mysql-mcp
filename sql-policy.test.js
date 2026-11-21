@@ -49,18 +49,21 @@ test('多语句被拒绝', () => {
   rj('SHOW TABLES; SELECT 1');
 });
 
-test('DDL 无条件拒绝（写开关也救不了）', () => {
+test('DDL 需要写开关（allowWrite=true 放行）', () => {
   for (const sql of [
     'DROP TABLE t', 'TRUNCATE t_user', 'ALTER TABLE t ADD COLUMN x int',
-    'CREATE TABLE t (id int)', 'RENAME TABLE a TO b', 'GRANT ALL ON db TO u',
-    'DELETE FROM t',
+    'CREATE TABLE t (id int)',
   ]) {
-    const ddl = sql !== 'DELETE FROM t';
-    if (ddl) assert.strictEqual(classifySql(sql).decision, REJECT, `裸执行应拒绝: ${sql}`);
-    assert.strictEqual(
-      classifySql(sql, true).decision, ddl ? REJECT : WRITE,
-      `开写开关后 ${sql.split(' ')[0]} 应${ddl ? '仍拒绝' : '放行'}`
-    );
+    assert.strictEqual(classifySql(sql).decision, REJECT, `未开开关应拒绝: ${sql}`);
+    assert.match(classifySql(sql).reason, /allowWrite/);
+    wr(sql);
+  }
+});
+
+test('非白名单动词开写开关也拒绝', () => {
+  for (const sql of [ 'RENAME TABLE a TO b', 'GRANT ALL ON db TO u' ]) {
+    rj(sql);
+    assert.strictEqual(classifySql(sql, true).decision, REJECT, `开开关后仍应拒绝: ${sql}`);
   }
 });
 

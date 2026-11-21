@@ -2,6 +2,7 @@
 
 const READ_VERBS = new Set([ 'SELECT', 'SHOW', 'DESC', 'DESCRIBE', 'EXPLAIN' ]);
 const WRITE_VERBS = new Set([ 'INSERT', 'UPDATE', 'DELETE', 'REPLACE' ]);
+const DDL_VERBS = new Set([ 'ALTER', 'CREATE', 'DROP', 'TRUNCATE' ]);
 
 const reject = reason => ({ decision: 'reject', reason });
 
@@ -104,13 +105,13 @@ function classifySql(sql, allowWrite = false) {
   }
 
   if (READ_VERBS.has(verb)) return { decision: 'readonly', verb };
-  if (WRITE_VERBS.has(verb)) {
+  if (WRITE_VERBS.has(verb) || DDL_VERBS.has(verb)) {
     if (!allowWrite) {
       return reject(`${verb} 属于写操作，当前为只读模式。确认可写后把配置文件里的 allowWrite 改成 true`);
     }
     return { decision: 'write', verb };
   }
-  return reject(`${verb} 不在允许范围内：DDL/权限/事务/存储过程类语句一律禁止`);
+  return reject(`${verb} 不在允许范围内：权限/事务/存储过程类语句一律禁止`);
 }
 
 function resolveVerb(tokens) {
