@@ -121,7 +121,7 @@ async function runQuery( sql ) {
   let ret;
   try {
     ret = await Promise.race( [
-      pool.select( sql ),
+      pool.select( sql, [], { skipSqlCheck: true } ),
       new Promise( ( _, reject ) => setTimeout( () => reject( new Error( 'TIMEOUT' ) ), config.timeoutMs ) ),
     ] );
   } catch ( err ) {
