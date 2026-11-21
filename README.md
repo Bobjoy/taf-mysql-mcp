@@ -10,7 +10,20 @@
 npm install -g @bobjoy/taf-mysql-mcp
 ```
 
-命令名不带 scope，装完就是 `taf-mysql-mcp`。
+命令名不带 scope，装完就是 `taf-mysql-mcp`，同时提供短别名 `tmm`（两者是同一个入口）。
+
+## 命令行直连
+
+除了当 MCP server，还能在命令行里直接执行一条 SQL，输出结果即退出（退出码 0 成功，1 失败或被拒）：
+
+```bash
+tmm "select * from <表> limit 10"
+tmm --config /path/to/config.json "select 1"
+tmm --version | -v
+tmm --help | -h
+```
+
+直连走的是和 MCP 工具同一套 SQL 策略与 `maxRows` 截断。位置参数以 SQL 关键字（`SELECT` / `UPDATE` / `WITH` 等）开头就按 SQL 处理，否则按配置文件路径处理；`--config` 的值不受影响。
 
 依赖 `@taf/taf-rpc` / `@taf/taf-stream`，这两个包只在公司私有 npm 源上。装不上时先确认 `@taf` scope 指向了私有源：
 
@@ -102,4 +115,4 @@ taf-mysql-mcp /path/to/config.json     # 裸路径同样接受，~ 会展开
 npm test          # node --test，无额外依赖
 ```
 
-`sql-policy.test.js` 是绕过用例集（注释、字面量、多语句、CTE 修饰的 DML、可执行注释、权限/事务/存储过程语句）；`config.test.js` 覆盖配置文件的读取路径、缺文件、坏 JSON、未知键告警与字段校验。改策略逻辑请先在这里加用例。
+`sql-policy.test.js` 是绕过用例集（注释、字面量、多语句、CTE 修饰的 DML、可执行注释、权限/事务/存储过程语句）；`config.test.js` 覆盖命令行参数解析（`--version` / `--help` / `--config` / SQL 直连识别）与配置文件的读取路径、缺文件、坏 JSON、未知键告警、字段校验。改策略逻辑请先在这里加用例。

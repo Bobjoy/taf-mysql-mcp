@@ -9,6 +9,9 @@ const path = require( 'path' );
 // 配置文件不在就报错，避免本意连测试库实际连上生产。
 const CONFIG_PATH = path.join( '.taf-mysql-mcp', 'config.json' );
 
+// 位置参数以 SQL 关键字开头就按 SQL 处理，否则按配置文件路径
+const SQL_PREFIX = /^\s*(?:with|select|insert|update|delete|replace|alter|create|drop|truncate|show|desc|describe|explain)\b/i;
+
 const KEYS = {
   servant: true,
   allowWrite: true,
@@ -27,12 +30,15 @@ function positiveInt( key, value, filePath ) {
   fail( `${filePath} 里的 ${key} 必须是正整数，给的是 ${JSON.stringify( value )}` );
 }
 
-/** 从 argv 里取配置文件路径，支持 `--config <p>` / `--config=<p>` / 裸路径。没有则返回 ''（走默认） */
-function parseConfigArg( argv ) {
+/** 解析命令行参数：--version/-v、--help/-h、--config <路径>、裸配置路径、或一条直连执行的 SQL */
+function parseArgs( argv ) {
+  const result = { version: false, help: false, sql: '', configPath: '' };
   const given = [];
   for ( let i = 0; i < argv.length; i++ ) {
     const arg = argv[ i ];
-    if ( arg === '--config' ) {
+    if ( arg === '--version' || arg === '-v' ) result.version = true;
+    else if ( arg === '--help' || arg === '-h' ) result.help = true;
+    else if ( arg === '--config' ) {
       const next = argv[ ++i ];
       if ( !next ) fail( '--config 后面要跟配置文件路径' );
       given.push( next );
@@ -40,11 +46,15 @@ function parseConfigArg( argv ) {
       given.push( arg.slice( '--config='.length ) );
     } else if ( arg.startsWith( '-' ) ) {
       // 打错参数名如果静默走默认路径，可能连上本不该连的环境
-      fail( `不认识的参数 ${arg}，只接受 --config <文件路径>` );
+      fail( `不认识的参数 ${arg}，只接受 --config <文件路径>、--version/-v、--help/-h` );
+    } else if ( SQL_PREFIX.test( arg ) ) {
+      if ( result.sql ) fail( '一次只能直连执行一条 SQL' );
+      result.sql = arg;
     } else given.push( arg );
   }
   if ( given.length > 1 ) fail( `只能指定一个配置文件，给了 ${given.length} 个：${given.join( ' ' )}` );
-  return given[ 0 ] || '';
+  result.configPath = given[ 0 ] || '';
+  return result;
 }
 
 function resolveConfigPath( cwd, explicit ) {
@@ -102,4 +112,4 @@ function loadConfig( cwd = process.cwd(), explicit = '' ) {
   };
 }
 
-module.exports = { loadConfig, parseConfigArg, CONFIG_PATH };
+module.exports = { loadConfig, parseArgs, CONFIG_PATH };

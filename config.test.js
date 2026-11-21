@@ -3,7 +3,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { loadConfig, parseConfigArg, CONFIG_PATH } = require('./config');
+const { loadConfig, parseArgs, CONFIG_PATH } = require('./config');
 
 const SERVANT = 'APP.TgDataAsyncServer.TgDataAsyncObj@tcp -h 127.0.0.1 -t 60000 -p 1234';
 
@@ -103,14 +103,38 @@ test('数值项必须是正整数，否则报错而不是静默取默认', () =>
   assert.match(msg(() => loadConfig(inDir({ servant: SERVANT, timeoutMs: 'bad' }))), /timeoutMs 必须是正整数/);
 });
 
-test('parseConfigArg 认三种写法，其余参数一律报错', () => {
-  assert.strictEqual(parseConfigArg([]), '');
-  assert.strictEqual(parseConfigArg(['--config', '/a/b.json']), '/a/b.json');
-  assert.strictEqual(parseConfigArg(['--config=/a/b.json']), '/a/b.json');
-  assert.strictEqual(parseConfigArg(['/a/b.json']), '/a/b.json');
-  assert.match(msg(() => parseConfigArg(['--confg', '/a'])), /不认识的参数/);
-  assert.match(msg(() => parseConfigArg(['--config'])), /后面要跟配置文件路径/);
-  assert.match(msg(() => parseConfigArg(['--config', '/a', '/b'])), /只能指定一个配置文件/);
+test('parseArgs 无参数时四项全空', () => {
+  assert.deepStrictEqual(parseArgs([]), { version: false, help: false, sql: '', configPath: '' });
+});
+
+test('parseArgs 认 --version/--help', () => {
+  for (const flag of ['-v', '--version']) assert.strictEqual(parseArgs([flag]).version, true, flag);
+  for (const flag of ['-h', '--help']) assert.strictEqual(parseArgs([flag]).help, true, flag);
+});
+
+test('parseArgs 认三种配置路径写法', () => {
+  assert.strictEqual(parseArgs(['--config', '/a/b.json']).configPath, '/a/b.json');
+  assert.strictEqual(parseArgs(['--config=/a/b.json']).configPath, '/a/b.json');
+  assert.strictEqual(parseArgs(['/a/b.json']).configPath, '/a/b.json');
+});
+
+test('parseArgs 把 SQL 关键字开头的位置参数识别为 SQL', () => {
+  assert.strictEqual(parseArgs(['select * from t']).sql, 'select * from t');
+  assert.strictEqual(parseArgs(['  SELECT 1']).sql, '  SELECT 1');
+  assert.strictEqual(parseArgs(['WITH d AS (select 1) select * from d']).sql, 'WITH d AS (select 1) select * from d');
+  // --config 的值哪怕形如 SQL 也归配置路径，两者可同时给出
+  const both = parseArgs(['--config', 'select.json', 'update t set a=1']);
+  assert.strictEqual(both.configPath, 'select.json');
+  assert.strictEqual(both.sql, 'update t set a=1');
+  // 表名带下划线等非关键字开头的不算 SQL，仍走配置路径
+  assert.strictEqual(parseArgs(['create_table.sql']).configPath, 'create_table.sql');
+});
+
+test('parseArgs 其余参数一律报错', () => {
+  assert.match(msg(() => parseArgs(['--confg', '/a'])), /不认识的参数/);
+  assert.match(msg(() => parseArgs(['--config'])), /后面要跟配置文件路径/);
+  assert.match(msg(() => parseArgs(['--config', '/a', '/b'])), /只能指定一个配置文件/);
+  assert.match(msg(() => parseArgs(['select 1', 'select 2'])), /只能直连执行一条 SQL/);
 });
 
 test('--config 的绝对路径生效，相对路径按 cwd 解析', () => {

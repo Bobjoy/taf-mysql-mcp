@@ -1,29 +1,17 @@
 #!/usr/bin/env node
 'use strict';
 
-// @taf/taf-rpc 会在初始化与后台 endpoint 刷新时 console.log 到 stdout，
-// 而 stdio transport 的行分隔 JSON-RPC 一旦被非 JSON 行污染就会整体失效。
-// 必须在 require 之前把这些出口改道到 stderr。
-console.log = console.info = console.debug = console.warn = ( ...args ) => console.error( '[taf]', ...args );
+// 命令行直连入口（--version / --help / 一条 SQL）在加载任何重依赖之前处理：
+// 不用等 @taf/taf-rpc 初始化，输出也走原生 stdout。
+const { parseArgs, CONFIG_PATH } = require( './config' );
 
-const { McpServer } = require( '@modelcontextprotocol/sdk/server/mcp.js' );
-const { StdioServerTransport } = require( '@modelcontextprotocol/sdk/server/stdio.js' );
-const { z } = require( 'zod' );
-const { classifySql } = require( './sql-policy' );
-const { loadConfig, parseConfigArg, CONFIG_PATH } = require( './config' );
-const { ETG: DB } = require( './TgDataAsyncProxy' );
+const OVERVIEW = `用法:
+  taf-mysql-mcp / tmm [--config <配置文件>]     启动 MCP server（stdio）
+  tmm "select * from <表> limit 10"             直连执行一条 SQL，输出结果后退出
+  taf-mysql-mcp --version | -v                  查看版本
+  taf-mysql-mcp --help | -h                     本帮助`;
 
-let Taf;
-try {
-  Taf = require( '@taf/taf-rpc' );
-} catch {
-  console.error( '缺少 TAF RPC 客户端 @taf/taf-rpc（在公司私有 npm 源上），请先安装。' );
-  process.exit( 1 );
-}
-
-const USAGE = `taf-mysql-mcp 配置错误。
-
-配置只有一个入口：默认读 <cwd>/${CONFIG_PATH}，也可以指定别的文件：
+const USAGE = `配置只有一个入口：默认读 <cwd>/${CONFIG_PATH}，也可以指定别的文件：
   taf-mysql-mcp --config /path/to/config.json
   taf-mysql-mcp /path/to/config.json
 
@@ -41,6 +29,45 @@ servant 必须是完整值。本工具不猜应用名、不内置任何地址，
 
 allowWrite=true 放开 INSERT/UPDATE/DELETE/REPLACE，以及 ALTER/CREATE/DROP/TRUNCATE 等 DDL。
 timeoutMs 是单次查询等待上限——TAF 客户端自身的超时很长，servant 配错时会一直挂着，靠这个值兜住。`;
+
+const HELP = `${OVERVIEW}\n\n${USAGE}`;
+
+let args;
+try {
+  args = parseArgs( process.argv.slice( 2 ) );
+} catch ( err ) {
+  console.error( `${err.message}\n\n${HELP}` );
+  process.exit( 1 );
+}
+
+if ( args.version ) {
+  process.stdout.write( `taf-mysql-mcp v${require( './package.json' ).version}\n`, () => process.exit( 0 ) );
+  return;
+}
+if ( args.help ) {
+  process.stdout.write( `${HELP}\n`, () => process.exit( 0 ) );
+  return;
+}
+
+// @taf/taf-rpc 会在初始化与后台 endpoint 刷新时 console.log 到 stdout，
+// 而 stdio transport 的行分隔 JSON-RPC 一旦被非 JSON 行污染就会整体失效。
+// 必须在 require 之前把这些出口改道到 stderr。
+console.log = console.info = console.debug = console.warn = ( ...args ) => console.error( '[taf]', ...args );
+
+const { McpServer } = require( '@modelcontextprotocol/sdk/server/mcp.js' );
+const { StdioServerTransport } = require( '@modelcontextprotocol/sdk/server/stdio.js' );
+const { z } = require( 'zod' );
+const { classifySql } = require( './sql-policy' );
+const { loadConfig } = require( './config' );
+const { ETG: DB } = require( './TgDataAsyncProxy' );
+
+let Taf;
+try {
+  Taf = require( '@taf/taf-rpc' );
+} catch {
+  console.error( '缺少 TAF RPC 客户端 @taf/taf-rpc（在公司私有 npm 源上），请先安装。' );
+  process.exit( 1 );
+}
 
 function createPool( servant, timeoutMs ) {
   const communicator = Taf.Communicator.New();
@@ -65,9 +92,9 @@ function createPool( servant, timeoutMs ) {
 
 let loaded;
 try {
-  loaded = loadConfig( process.cwd(), parseConfigArg( process.argv.slice( 2 ) ) );
+  loaded = loadConfig( process.cwd(), args.configPath );
 } catch ( err ) {
-  console.error( `${err.message}\n\n${USAGE}` );
+  console.error( `${err.message}\n\n${HELP}` );
   process.exit( 1 );
 }
 
@@ -129,9 +156,25 @@ async function runQuery( sql ) {
   return text( `${shown.length} 行${notice}\n${JSON.stringify( shown )}` );
 }
 
-const server = new McpServer( { name: 'taf-mysql-mcp', version: require( './package.json' ).version } );
+// 直连模式：命令行直接给一条 SQL，走同一套 classifySql + runQuery，输出后退出，不启动 MCP server。
+// TAF 心跳定时器不会让进程自然退出，所以必须显式 exit；退出码 0 成功、1 失败/被拒。
+if ( args.sql ) {
+  const verdict = classifySql( args.sql, config.allowWrite );
+  if ( verdict.decision === 'reject' ) {
+    console.error( `已拒绝：${verdict.reason}` );
+    process.exit( 1 );
+  }
+  runQuery( args.sql ).then(
+    t => process.stdout.write( `${t.content[ 0 ].text}\n`, () => process.exit( t.isError ? 1 : 0 ) ),
+    err => {
+      console.error( `执行异常：${err.message}` );
+      process.exit( 1 );
+    }
+  );
+  return;
+}
 
-server.registerTool(
+const server = new McpServer( { name: 'taf-mysql-mcp', version: require( './package.json' ).version } );server.registerTool(
   'query',
   {
     title: '查询 MySQL（经 TAF 数据访问服务）',
