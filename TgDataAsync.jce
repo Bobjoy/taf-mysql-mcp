@@ -1,0 +1,80 @@
+module ETG {
+
+    struct SelectReq {
+        0 optional  string           sql;
+        1 optional  string           param;
+        2 optional  string           option;
+    };
+
+    struct SelectRsp {
+        0 optional  int              iRet;
+        1 optional  string           result; //Stringify(JSON obj)
+        2 optional  string           error;
+    };
+
+    struct UpdateReq {
+        0 optional	string           table;
+        1 optional  string           data;
+        2 optional  string           where;
+        3 optional  string           param;
+        4 optional  string           option;
+    };
+
+    struct UpdateRsp {
+        0 optional  int              iRet;
+        1 optional  int              result; //affectedRows
+        2 optional  string           error;
+    };
+
+    struct InsertReq {
+        0 optional	string           table;
+        1 optional  string           data;
+        2 optional  string           option;
+    };
+
+    struct InsertRsp {
+        0 optional  int              iRet;
+        1 optional  int              result; //批量 ? affectedRows : insertId
+        2 optional  string           error;
+    };
+
+    struct ReplaceReq {
+        0 optional	string           table;
+        1 optional  string           data;
+        2 optional  string           option;
+    };
+
+    struct ReplaceRsp {
+        0 optional  int              iRet;
+        1 optional  int              result; //批量 ? affectedRows : insertId
+        2 optional  string           error;
+    };
+
+    struct DeleteReq {
+        0 optional	string           table;
+        1 optional  string           where;
+        2 optional  string           param;
+        3 optional  string           option;
+    };
+
+    struct DeleteRsp {
+        0 optional  int              iRet;
+        1 optional  int              result; //affectedRows
+        2 optional  string           error;
+    };
+
+    interface TgDataAsync {
+
+        int select(SelectReq stReq, out SelectRsp stRsp);
+
+        int update(UpdateReq stReq, out UpdateRsp stRsp);
+
+        int insert(InsertReq stReq, out InsertRsp stRsp);
+
+        int replace(ReplaceReq stReq, out ReplaceRsp stRsp);
+
+        int delete(DeleteReq stReq, out DeleteRsp stRsp);
+
+    };
+
+};
